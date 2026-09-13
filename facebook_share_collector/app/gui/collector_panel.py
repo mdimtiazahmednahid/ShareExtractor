@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
-                                 QPushButton, QGroupBox, QLabel)
+                                 QPushButton, QGroupBox, QLabel, QCheckBox)
 from PySide6.QtCore import Signal
 import datetime
 
@@ -25,6 +25,16 @@ class CollectorPanel(QGroupBox):
         
         for lbl in (self.lbl_status, self.lbl_profiles, self.lbl_scrolls, self.lbl_new):
             stats_layout.addWidget(lbl)
+            
+        # Settings
+        settings_layout = QHBoxLayout()
+        self.chk_auto_retry = QCheckBox("Auto-Retry on scroll stop (5s)")
+        self.chk_auto_retry.setChecked(True)
+        self.chk_auto_save = QCheckBox("Auto-Export CSV")
+        self.chk_auto_save.setChecked(True)
+        settings_layout.addWidget(self.chk_auto_retry)
+        settings_layout.addWidget(self.chk_auto_save)
+        settings_layout.addStretch()
             
         # Buttons
         btn_layout = QHBoxLayout()
@@ -55,6 +65,7 @@ class CollectorPanel(QGroupBox):
         btn_layout.addWidget(self.btn_stop)
         
         self.layout.addLayout(stats_layout)
+        self.layout.addLayout(settings_layout)
         self.layout.addLayout(btn_layout)
 
     def update_status(self, status: str):

@@ -19,6 +19,7 @@ class CollectorEngine(QThread):
     stats_updated = Signal(int, int, int) # total_profiles, total_scrolls, new_this_pass
     finished_collection = Signal()
     error_occurred = Signal(str)
+    auto_save_requested = Signal()
 
     def __init__(self, appium_manager: AppiumManager, session: CollectionSession, config: dict):
         super().__init__()
@@ -36,6 +37,10 @@ class CollectorEngine(QThread):
         
         min_conf = self.config.get("extraction.minimum_confidence", 0.6)
         self.extractor = ProfileExtractor(min_confidence=min_conf)
+        
+        self.auto_retry = False
+        self.auto_save = False
+        self.profiles_since_last_save = 0
 
     def run(self):
         self.is_running = True
@@ -77,27 +82,38 @@ class CollectorEngine(QThread):
                 logger.info("Page source has not changed after scroll.")
                 empty_passes += 1
                 if empty_passes >= max_no_new_results:
-                    logger.info("End of list reached (source stable).")
-                    break
+                    if self.auto_retry:
+                        logger.info("End of list reached, waiting 5s for lazy load (Auto-Retry)...")
+                        self.status_updated.emit("WAITING 5s (LAZY LOAD)")
+                        time.sleep(5)
+                        empty_passes = 0
+                        self.status_updated.emit("COLLECTING")
+                    else:
+                        logger.info("End of list reached (source stable).")
+                        break
             
             # 3. Verify it's a share list
             # We might want to only strictly check this on the first pass, 
             # as headers scroll out of view. We'll check it, but not fail immediately.
             
             # 4. Extract
-            candidates = self.extractor.extract(xml_source, self.session.id)
-            
             new_this_pass = 0
-            for candidate in candidates:
-                if not self.deduplicator.is_duplicate(candidate):
-                    self.deduplicator.add(candidate)
+            if xml_source != last_xml_source:
+                candidates = self.extractor.extract(xml_source, self.session.id)
+                
+                for candidate in candidates:
+                    # Deduplication bypassed by user request to collect raw responses
                     self.profile_found.emit(candidate)
                     self.session.total_profiles += 1
                     new_this_pass += 1
-            
-            if new_this_pass == 0:
-                empty_passes += 1
-            else:
+                    
+                    if self.auto_save:
+                        self.profiles_since_last_save += 1
+                        if self.profiles_since_last_save >= 50:
+                            self.auto_save_requested.emit()
+                            self.profiles_since_last_save = 0
+                
+                # Only reset it if the screen did change.
                 empty_passes = 0
                 
             self.stats_updated.emit(self.session.total_profiles, scrolls, new_this_pass)

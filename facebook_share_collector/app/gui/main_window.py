@@ -1,4 +1,5 @@
 import logging
+import os
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QSplitter, 
                                QTabWidget, QMessageBox)
 from PySide6.QtCore import Qt
@@ -13,6 +14,7 @@ from app.automation.ui_inspector import UIInspector
 from app.models.collection_session import CollectionSession
 from app.database.repository import DatabaseRepository
 from app.config.settings import get_settings
+from app.exporters.csv_exporter import CSVExporter
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +99,11 @@ class MainWindow(QMainWindow):
         self.engine.profile_found.connect(self._on_profile_found)
         self.engine.finished_collection.connect(self._on_collection_finished)
         self.engine.error_occurred.connect(self._on_error)
+        self.engine.auto_save_requested.connect(self._do_auto_save)
+        
+        # Pass auto settings
+        self.engine.auto_retry = self.collector_panel.chk_auto_retry.isChecked()
+        self.engine.auto_save = self.collector_panel.chk_auto_save.isChecked()
         
         self.engine.start()
         
@@ -126,6 +133,15 @@ class MainWindow(QMainWindow):
 
     def _on_error(self, message):
         QMessageBox.critical(self, "Error", message)
+
+    def _do_auto_save(self):
+        try:
+            os.makedirs("data", exist_ok=True)
+            path = os.path.join("data", "autosave.csv")
+            if CSVExporter.export(self.results_panel.profiles, path):
+                logger.info(f"Auto-saved to {path}")
+        except Exception as e:
+            logger.error(f"Auto-save failed: {e}")
         
     def closeEvent(self, event):
         if self.engine and self.engine.isRunning():
